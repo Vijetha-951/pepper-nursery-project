@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🌶️ Pepper Nursery Frontend
 
 A modern React-based web application for **Thekkevayalil Pepper Nursery** featuring Firebase authentication, user management, and product catalog functionality.
@@ -276,3 +277,6 @@ For support and questions:
 ---
 
 **Built with ❤️ for Thekkevayalil Pepper Nursery**
+=======
+# pepper-nursery-project
+>>>>>>> 8a02ff079c6c57d5a0260533b5e121e5b44ee6a4
