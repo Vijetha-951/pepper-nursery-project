@@ -4,7 +4,7 @@ import Home from "./pages/Home";
 import AddProducts from "./pages/AddProducts";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import Dashboard from "./pages/Dashboard";
+import RoleBasedDashboard from "./pages/RoleBasedDashboard";
 import CompleteProfile from "./pages/CompleteProfile";
 import AuthCallback from "./pages/AuthCallback";
 
@@ -33,7 +33,7 @@ function App() {
         <Route path="/auth/google/callback" element={<AuthCallback />} />
         
         {/* Protected routes without navbar */}
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard" element={<RoleBasedDashboard />} />
       </Routes>
     </Router>
   );

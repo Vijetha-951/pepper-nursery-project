@@ -24,14 +24,48 @@ class AuthService {
     }
   }
 
-  // Regular email/password registration
+  // Regular email/password registration (Hybrid: Firebase first, then backend)
   async register(userData) {
     try {
-      const result = await this.firebaseAuth.registerWithEmailAndPassword(userData);
-      if (result.success) {
-        this.user = result.user;
+      // 1) Create user in Firebase (Auth + Firestore)
+      const firebaseResult = await this.firebaseAuth.registerWithEmailAndPassword(userData);
+      if (!firebaseResult.success) {
+        return firebaseResult; // return Firebase validation/auth errors to UI
       }
-      return result;
+
+      // 2) Create backend session + user record using Firebase ID token
+      const firebaseUser = this.firebaseAuth.getCurrentUser();
+      const idToken = firebaseUser ? await firebaseUser.getIdToken(true) : null;
+
+      if (idToken) {
+        const resp = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            idToken,
+            role: userData.role,
+            phone: userData.phone,
+            place: userData.place,
+            district: userData.district,
+            pincode: userData.pincode
+          })
+        });
+
+        // If backend responds but not ok, log and continue (Firebase already succeeded)
+        if (!resp.ok) {
+          let data = null;
+          try { data = await resp.json(); } catch (_) {}
+          console.warn('Backend registration non-OK:', data);
+        }
+
+        // Optional: read backend data if needed
+        // const data = await resp.json();
+      }
+
+      // 3) Persist minimal user context (already set by firebaseAuth service)
+      this.user = firebaseResult.user;
+      return firebaseResult;
     } catch (error) {
       console.error('Registration error:', error);
       return { success: false, error: 'Network error. Please try again.' };

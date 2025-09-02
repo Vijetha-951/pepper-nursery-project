@@ -71,8 +71,8 @@ class FirebaseAuthService {
 
       await setDoc(doc(db, 'users', user.uid), userDoc);
 
-      // Store user data in localStorage
-      const userData = {
+      // Store user data in localStorage (rename to avoid shadowing the function parameter)
+      const storedUserData = {
         uid: user.uid,
         email: user.email,
         displayName: `${firstName} ${lastName}`,
@@ -86,11 +86,11 @@ class FirebaseAuthService {
         pincode
       };
 
-      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('user', JSON.stringify(storedUserData));
       
       return {
         success: true,
-        user: userData,
+        user: storedUserData,
         message: 'Registration successful!'
       };
 
@@ -246,6 +246,15 @@ class FirebaseAuthService {
         updatedAt: serverTimestamp()
       });
 
+      // Create backend session cookie
+      const idToken = await user.getIdToken(true);
+      await fetch('/api/auth/sessionLogin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ idToken })
+      });
+
       localStorage.setItem('user', JSON.stringify(userData));
 
       return {
@@ -312,6 +321,8 @@ class FirebaseAuthService {
     try {
       await signOut(auth);
       localStorage.removeItem('user');
+      // Clear backend session cookie
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
       return {
         success: true,
         message: 'Signed out successfully!'

@@ -59,10 +59,18 @@ export default function CompleteProfile() {
     
     if (!formData.firstName) {
       newErrors.firstName = "First name is required";
+    } else if (formData.firstName.length < 2 || formData.firstName.length > 50) {
+      newErrors.firstName = "First name must be 2–50 characters";
+    } else if (!/^[\p{L}]+$/u.test(formData.firstName)) {
+      newErrors.firstName = "Only letters allowed";
     }
     
     if (!formData.lastName) {
       newErrors.lastName = "Last name is required";
+    } else if (formData.lastName.length < 2 || formData.lastName.length > 50) {
+      newErrors.lastName = "Last name must be 2–50 characters";
+    } else if (!/^[\p{L}]+$/u.test(formData.lastName)) {
+      newErrors.lastName = "Only letters allowed";
     }
     
     if (!formData.email) {
@@ -79,10 +87,18 @@ export default function CompleteProfile() {
     
     if (!formData.place) {
       newErrors.place = "Place is required";
+    } else if (formData.place.length < 2 || formData.place.length > 100) {
+      newErrors.place = "Place must be 2–100 characters";
+    } else if (!/^[\p{L}\s]+$/u.test(formData.place)) {
+      newErrors.place = "Only letters and spaces allowed";
     }
     
     if (!formData.district) {
       newErrors.district = "District is required";
+    } else if (formData.district.length < 2 || formData.district.length > 50) {
+      newErrors.district = "District must be 2–50 characters";
+    } else if (!/^[\p{L}]+$/u.test(formData.district)) {
+      newErrors.district = "Only letters allowed";
     }
     
     if (!formData.pincode) {

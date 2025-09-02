@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { User, Mail, Lock, Phone, MapPin, Eye, EyeOff, ArrowLeft, UserPlus, Leaf } from "lucide-react";
 import backgroundImage from "../assets/loginreg.jpeg";
 import authService from "../services/authService";
+import { fetchSignInMethodsForEmail } from "firebase/auth";
+import { auth } from "../config/firebase";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -24,59 +26,117 @@ export default function Register() {
   const [successMessage, setSuccessMessage] = useState("");
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (errors[e.target.name]) {
-      setErrors({ ...errors, [e.target.name]: "" });
+    const { name, value } = e.target;
+    // Allow spaces only for 'place'; enforce digits-only and max 10 for phone
+    let newValue = value;
+    if (name !== 'place') {
+      newValue = newValue.replace(/\s+/g, "");
+    }
+    if (name === 'phone') {
+      newValue = newValue.replace(/\D/g, '').slice(0, 10);
+    }
+    setFormData({ ...formData, [name]: newValue });
+    if (errors[name]) {
+      setErrors({ ...errors, [name]: "" });
     }
   };
 
   const validateForm = () => {
     const newErrors = {};
-    
-    if (!formData.firstName.trim()) {
+
+    const lettersOnly = /^[\p{L}]+$/u; // Unicode letters only
+    const hasSpace = (s) => /\s/.test(s || "");
+
+    // First Name: required, 2–50, letters only, no spaces
+    if (!formData.firstName) {
       newErrors.firstName = "First name is required";
-    } else if (formData.firstName.trim().length < 2) {
-      newErrors.firstName = "First name must be at least 2 characters";
+    } else if (hasSpace(formData.firstName)) {
+      newErrors.firstName = "No spaces allowed";
+    } else if (formData.firstName.length < 2 || formData.firstName.length > 50) {
+      newErrors.firstName = "First name must be 2–50 characters";
+    } else if (!lettersOnly.test(formData.firstName)) {
+      newErrors.firstName = "Only letters allowed";
     }
-    
-    if (!formData.lastName.trim()) {
+
+    // Last Name: required, 2–50, letters only, no spaces
+    if (!formData.lastName) {
       newErrors.lastName = "Last name is required";
-    } else if (formData.lastName.trim().length < 2) {
-      newErrors.lastName = "Last name must be at least 2 characters";
+    } else if (hasSpace(formData.lastName)) {
+      newErrors.lastName = "No spaces allowed";
+    } else if (formData.lastName.length < 2 || formData.lastName.length > 50) {
+      newErrors.lastName = "Last name must be 2–50 characters";
+    } else if (!lettersOnly.test(formData.lastName)) {
+      newErrors.lastName = "Only letters allowed";
     }
-    
-    if (!formData.email) {
+
+    // Email: required, no spaces, valid format
+    const email = formData.email;
+    if (!email) {
       newErrors.email = "Email is required";
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+    } else if (hasSpace(email)) {
+      newErrors.email = "No spaces allowed";
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
       newErrors.email = "Please enter a valid email";
     }
-    
+
+    // Password: required, no spaces, strength rules
     if (!formData.password) {
       newErrors.password = "Password is required";
-    } else if (formData.password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters";
+    } else if (hasSpace(formData.password)) {
+      newErrors.password = "No spaces allowed in password";
+    } else {
+      const pwd = formData.password;
+      if (pwd.length < 8) {
+        newErrors.password = "Password must be at least 8 characters";
+      } else if (!/[A-Z]/.test(pwd)) {
+        newErrors.password = "Password must include at least one uppercase letter";
+      } else if (!/[a-z]/.test(pwd)) {
+        newErrors.password = "Password must include at least one lowercase letter";
+      } else if (!/\d/.test(pwd)) {
+        newErrors.password = "Password must include at least one number";
+      } else if (!/[^A-Za-z0-9]/.test(pwd)) {
+        newErrors.password = "Password must include at least one special character";
+      }
     }
-    
+
+    // Phone: required, no spaces, 10 digits only
     if (!formData.phone) {
       newErrors.phone = "Phone number is required";
-    } else if (!/^\d{10}$/.test(formData.phone.replace(/\D/g, ''))) {
-      newErrors.phone = "Please enter a valid 10-digit phone number";
+    } else if (hasSpace(formData.phone)) {
+      newErrors.phone = "No spaces allowed";
+    } else if (!/^\d{10}$/.test(formData.phone)) {
+      newErrors.phone = "Phone must be exactly 10 digits (numbers only)";
     }
-    
-    if (!formData.place.trim()) {
+
+    // Place: required, 2–100, letters + spaces only
+    if (!formData.place) {
       newErrors.place = "Place is required";
+    } else if (formData.place.length < 2 || formData.place.length > 100) {
+      newErrors.place = "Place must be 2–100 characters";
+    } else if (!/^[\p{L}\s]+$/u.test(formData.place)) {
+      newErrors.place = "Only letters and spaces allowed";
     }
-    
-    if (!formData.district.trim()) {
+
+    // District: required, 2–50, letters only, no spaces
+    if (!formData.district) {
       newErrors.district = "District is required";
+    } else if (hasSpace(formData.district)) {
+      newErrors.district = "No spaces allowed";
+    } else if (formData.district.length < 2 || formData.district.length > 50) {
+      newErrors.district = "District must be 2–50 characters";
+    } else if (!lettersOnly.test(formData.district)) {
+      newErrors.district = "Only letters allowed";
     }
-    
+
+    // Pincode: required, no spaces, 6 digits
     if (!formData.pincode) {
       newErrors.pincode = "Pincode is required";
+    } else if (hasSpace(formData.pincode)) {
+      newErrors.pincode = "No spaces allowed";
     } else if (!/^\d{6}$/.test(formData.pincode)) {
       newErrors.pincode = "Please enter a valid 6-digit pincode";
     }
-    
+
     return newErrors;
   };
 
@@ -87,6 +147,17 @@ export default function Register() {
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
+    }
+
+    // Email uniqueness check (prevent duplicate registration)
+    try {
+      const methods = await fetchSignInMethodsForEmail(auth, formData.email);
+      if (methods && methods.length > 0) {
+        setErrors({ email: "This email is already registered" });
+        return;
+      }
+    } catch (checkError) {
+      // If Firebase throws on invalid email, our validation already handles it
     }
     
     setIsLoading(true);
@@ -552,7 +623,7 @@ export default function Register() {
             <div style={{ flex: 1, height: '1px', background: 'linear-gradient(to left, transparent, #e5e7eb, transparent)' }}></div>
           </div>
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} autoComplete="off">
             {/* First Name & Last Name Row */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
               <div>
@@ -582,6 +653,7 @@ export default function Register() {
                     value={formData.firstName}
                     onChange={handleChange}
                     style={inputStyle}
+                    autoComplete="given-name"
                   />
                 </div>
                 {errors.firstName && <p style={errorStyle}>{errors.firstName}</p>}
@@ -614,6 +686,7 @@ export default function Register() {
                     value={formData.lastName}
                     onChange={handleChange}
                     style={inputStyle}
+                    autoComplete="family-name"
                   />
                 </div>
                 {errors.lastName && <p style={errorStyle}>{errors.lastName}</p>}
@@ -647,6 +720,10 @@ export default function Register() {
                   value={formData.email}
                   onChange={handleChange}
                   style={inputStyle}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
                 />
               </div>
               {errors.email && <p style={errorStyle}>{errors.email}</p>}
@@ -679,6 +756,10 @@ export default function Register() {
                   value={formData.password}
                   onChange={handleChange}
                   style={inputStyle}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
                 />
                 <button
                   type="button"
@@ -736,6 +817,7 @@ export default function Register() {
                     value={formData.phone}
                     onChange={handleChange}
                     style={inputStyle}
+                    autoComplete="tel"
                   />
                 </div>
                 {errors.phone && <p style={errorStyle}>{errors.phone}</p>}
@@ -794,6 +876,7 @@ export default function Register() {
                     value={formData.place}
                     onChange={handleChange}
                     style={inputStyle}
+                    autoComplete="address-level2"
                   />
                 </div>
                 {errors.place && <p style={errorStyle}>{errors.place}</p>}
@@ -826,6 +909,7 @@ export default function Register() {
                     value={formData.district}
                     onChange={handleChange}
                     style={inputStyle}
+                    autoComplete="address-level1"
                   />
                 </div>
                 {errors.district && <p style={errorStyle}>{errors.district}</p>}
@@ -860,6 +944,7 @@ export default function Register() {
                   onChange={handleChange}
                   maxLength="6"
                   style={inputStyle}
+                  autoComplete="postal-code"
                 />
               </div>
               {errors.pincode && <p style={errorStyle}>{errors.pincode}</p>}

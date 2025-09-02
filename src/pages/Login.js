@@ -17,27 +17,38 @@ export default function Login() {
   const [successMessage, setSuccessMessage] = useState("");
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (errors[e.target.name]) {
-      setErrors({ ...errors, [e.target.name]: "" });
+    const { name, value } = e.target;
+    // Remove spaces for all fields
+    const newValue = (value || "").replace(/\s+/g, "");
+    setFormData({ ...formData, [name]: newValue });
+    if (errors[name]) {
+      setErrors({ ...errors, [name]: "" });
     }
   };
 
   const validateForm = () => {
     const newErrors = {};
-    
+
+    const hasSpace = (s) => /\s/.test(s || "");
+
+    // Email validation: required, no spaces, valid format
     if (!formData.email) {
       newErrors.email = "Email is required";
+    } else if (hasSpace(formData.email)) {
+      newErrors.email = "No spaces allowed";
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = "Please enter a valid email";
     }
-    
+
+    // Password validation: required, min length, no spaces
     if (!formData.password) {
       newErrors.password = "Password is required";
-    } else if (formData.password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters";
+    } else if (hasSpace(formData.password)) {
+      newErrors.password = "No spaces allowed in password";
+    } else if (formData.password.length < 8) {
+      newErrors.password = "Password must be at least 8 characters";
     }
-    
+
     return newErrors;
   };
 
@@ -420,7 +431,7 @@ export default function Login() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} autoComplete="off">
             {/* Email */}
             <div style={{ marginBottom: '1.5rem' }}>
               <div 
@@ -448,6 +459,10 @@ export default function Login() {
                   value={formData.email}
                   onChange={handleChange}
                   style={inputStyle}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
                 />
               </div>
               {errors.email && <p style={errorStyle}>{errors.email}</p>}
@@ -480,6 +495,10 @@ export default function Login() {
                   value={formData.password}
                   onChange={handleChange}
                   style={inputStyle}
+                  autoComplete="new-password"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
                 />
                 <button
                   type="button"
