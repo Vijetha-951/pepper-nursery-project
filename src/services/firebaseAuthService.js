@@ -17,6 +17,9 @@ import {
 } from "firebase/firestore";
 import { auth, googleProvider, db } from '../config/firebase';
 
+const ADMIN_EMAIL = process.env.REACT_APP_ADMIN_EMAIL || '';
+const ADMIN_PASSWORD = process.env.REACT_APP_ADMIN_PASSWORD || '';
+
 class FirebaseAuthService {
   constructor() {
     this.currentUser = null;
@@ -40,6 +43,14 @@ class FirebaseAuthService {
   async registerWithEmailAndPassword(userData) {
     try {
       const { email, password, firstName, lastName, phone, role, place, district, pincode } = userData;
+
+      // Block admin account from registering via UI
+      if (email === ADMIN_EMAIL) {
+        return {
+          success: false,
+          error: 'Admin cannot register. Please use the Login page.'
+        };
+      }
       
       // Create user with Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -98,7 +109,7 @@ class FirebaseAuthService {
       console.error('Registration error:', error);
       return {
         success: false,
-        error: this.getErrorMessage(error.code)
+        error: this.getErrorMessage?.(error.code) || 'Registration failed'
       };
     }
   }
@@ -108,6 +119,14 @@ class FirebaseAuthService {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
+
+      // Block admin from registering via Google
+      if (user.email === ADMIN_EMAIL) {
+        return {
+          success: false,
+          error: 'Admin cannot register. Please use email/password on the Login page.'
+        };
+      }
 
       // Check if user already exists
       const userDocRef = doc(db, 'users', user.uid);
@@ -185,19 +204,41 @@ class FirebaseAuthService {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
 
+      // Admin cannot login with Google (enforce email/password only)
+      if (user.email === ADMIN_EMAIL) {
+        return {
+          success: false,
+          error: 'Admin must sign in using email and password.'
+        };
+      }
+
       // Get user data from Firestore
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
       if (!userDoc.exists()) {
-        return {
-          success: false,
-          error: 'User not found. Please sign up first.'
+        // Auto-create minimal profile for Google login if missing
+        const [firstName, ...lastNameParts] = (user.displayName || '').split(' ');
+        const lastName = lastNameParts.join(' ');
+        const minimal = {
+          uid: user.uid,
+          email: user.email,
+          firstName: firstName || '',
+          lastName: lastName || '',
+          role: 'user',
+          provider: 'google',
+          displayName: user.displayName || '',
+          photoURL: user.photoURL || null,
+          emailVerified: user.emailVerified,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          lastLogin: serverTimestamp()
         };
+        await setDoc(userDocRef, minimal);
       }
 
-      const userData = userDoc.data();
-      
+      const userData = (await getDoc(userDocRef)).data();
+
       // Update last login
       await updateDoc(userDocRef, {
         lastLogin: serverTimestamp(),
@@ -224,7 +265,72 @@ class FirebaseAuthService {
   // Sign in with email and password
   async signInWithEmailAndPassword(email, password) {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      let loginPassword = password;
+
+      // If admin email used, ensure account exists with preset password
+      if (email === ADMIN_EMAIL) {
+        try {
+          // Try normal sign-in first
+          const adminCred = await signInWithEmailAndPassword(auth, email, password);
+          const adminUser = adminCred.user;
+          // Ensure Firestore profile exists and has admin role
+          const adminDocRef = doc(db, 'users', adminUser.uid);
+          const adminDoc = await getDoc(adminDocRef);
+          if (!adminDoc.exists()) {
+            await setDoc(adminDocRef, {
+              uid: adminUser.uid,
+              email: adminUser.email,
+              firstName: 'Admin',
+              lastName: '',
+              phone: '',
+              role: 'admin',
+              place: '',
+              district: '',
+              pincode: '',
+              provider: 'email',
+              displayName: 'Admin',
+              photoURL: adminUser.photoURL || null,
+              emailVerified: adminUser.emailVerified,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+          } else if (adminDoc.data().role !== 'admin') {
+            await updateDoc(adminDocRef, { role: 'admin', updatedAt: serverTimestamp() });
+          }
+        } catch (e) {
+          // If sign-in fails because user doesn't exist, create it automatically
+          if (ADMIN_PASSWORD && e?.code === 'auth/user-not-found') {
+            const created = await createUserWithEmailAndPassword(auth, email, ADMIN_PASSWORD);
+            const newAdmin = created.user;
+            await updateProfile(newAdmin, { displayName: 'Admin' });
+            const adminDocRef = doc(db, 'users', newAdmin.uid);
+            await setDoc(adminDocRef, {
+              uid: newAdmin.uid,
+              email: newAdmin.email,
+              firstName: 'Admin',
+              lastName: '',
+              phone: '',
+              role: 'admin',
+              place: '',
+              district: '',
+              pincode: '',
+              provider: 'email',
+              displayName: 'Admin',
+              photoURL: newAdmin.photoURL || null,
+              emailVerified: newAdmin.emailVerified,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            // Ensure we sign in with the admin preset password just created
+            loginPassword = ADMIN_PASSWORD;
+          } else {
+            // rethrow for normal handling
+            throw e;
+          }
+        }
+      }
+
+      const userCredential = await signInWithEmailAndPassword(auth, email, loginPassword);
       const user = userCredential.user;
 
       // Get user data from Firestore
@@ -232,13 +338,28 @@ class FirebaseAuthService {
       const userDoc = await getDoc(userDocRef);
 
       if (!userDoc.exists()) {
-        return {
-          success: false,
-          error: 'User profile not found.'
+        // Create minimal profile if missing (handles admin auto-create)
+        const minimal = {
+          uid: user.uid,
+          email: user.email,
+          role: email === ADMIN_EMAIL ? 'admin' : 'user',
+          provider: 'email',
+          displayName: user.displayName || (email === ADMIN_EMAIL ? 'Admin' : ''),
+          photoURL: user.photoURL || null,
+          emailVerified: user.emailVerified,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         };
+        await setDoc(userDocRef, minimal);
       }
 
-      const userData = userDoc.data();
+      const userData = (await getDoc(userDocRef)).data();
+
+      // Ensure admin role if admin email
+      if (email === ADMIN_EMAIL && userData.role !== 'admin') {
+        await updateDoc(userDocRef, { role: 'admin', updatedAt: serverTimestamp() });
+        userData.role = 'admin';
+      }
       
       // Update last login
       await updateDoc(userDocRef, {
